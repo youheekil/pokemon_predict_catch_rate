@@ -1,0 +1,425 @@
+---
+title: "POKEMON"
+author: "Youhee Kil"
+date: "12/1/2017"
+output:
+  pdf_document: default
+  html_document: default
+---
+#Description of the data
+
+* isLegendary: Boolean indicating whether the Pokémon is legendary or not. Legendary Pokémon tend to be stronger, to have unique abilities, to be really hard to find, and to be even harder to catch. 
+* hasMegaEvolution: Boolean indicating whether a Pokémon can mega-evolve or not. Mega-evolving is property that some Pokémon have and allows them to change their appearance, types, and stats during a combat into a much stronger form.
+* Catch_Rate: Numerical variable indicating how easy is to catch a Pokémon when trying to capture it to make it part of your team. It is bounded between 3 and 255. The number of different values it takes is not too high notwithstanding, we can consider it is a continuous variable.
+
+
+# Questions
+  Can we successfully predict the catch rate (how easy to catch a Pokemon when trying to capture it to make it part of your team) with Decision Tree ? 
+  
+
+# Load data
+```{r}
+library(readr)
+pokemon <- read_csv("~/Downloads/pokemon/pokemon_alopez247.csv")
+```
+
+# Libraries
+```{r}
+library(ggplot2)
+library(dplyr)
+library(ggvis)
+library(Amelia)
+```
+
+# Detail
+```{r}
+
+head(pokemon)
+pokemon_m <- pokemon[, c(2, 13, 3:12, 14:23)]
+head(pokemon_m)
+write.csv(pokemon_m, file = "pokemon_m.csv")
+
+
+```
+
+#Check NA
+As we see the graph from the below, Egg group2, Type 2 and Pr_Male has missing values so much. We will discover more about it whether those columns are valuable to include. 
+```{r}
+missmap(pokemon_m, main = "Missing values vs observed")
+```
+
+##Data 
+```{r}
+str(pokemon_m)
+```
+
+##Changing data type 
+
+```{r}
+pokemon_m$isLegendary <- as.factor(pokemon_m$isLegendary)
+pokemon_m$Type_1 <- as.factor(pokemon_m$Type_1)
+pokemon_m$Type_2 <- as.factor(pokemon_m$Type_2)
+pokemon_m$Generation <- as.factor(pokemon_m$Generation)
+pokemon_m$Color <- as.factor(pokemon_m$Color)
+pokemon_m$hasGender <- as.factor(pokemon_m$hasGender)
+pokemon_m$Egg_Group_1 <- as.factor(pokemon_m$Egg_Group_1)
+pokemon_m$Egg_Group_2 <- as.factor(pokemon_m$Egg_Group_2)
+pokemon_m$hasMegaEvolution <- as.factor(pokemon_m$hasMegaEvolution)
+pokemon_m$Body_Style <- as.factor(pokemon_m$Body_Style)
+
+str(pokemon_m)
+```
+
+
+##Aggregate the power by total and type1 (total_mean)
+```{r}
+type_power <- aggregate(pokemon_m$Total, by=list(pokemon_m$Type_1), FUN=mean)  # aggregate
+head(type_power)
+```
+##HasGender 
+As I show earlier, Pre_Male has some missing values. 
+```{r}
+gender = table(pokemon_m$hasGender, pokemon_m$isLegendary)
+gender
+barplot(gender,main="Gender in Pokemon",xlab="Has Gender",ylab="Legendary")
+
+pokemon_has_gender = pokemon_m %>% filter(hasGender=="True" & Pr_Male != 0.5) 
+# I will consider pr_male = 0.5 as no gender indicated. 
+ggplot(pokemon_has_gender , aes(x=Pr_Male, fill = isLegendary)) + 
+  geom_histogram() +
+  coord_flip() +
+  labs(title ="Probability of Male of Pokemons having gender")
+
+
+
+legend=pokemon_m %>% filter(isLegendary =="True")
+
+ggplot(legend, aes(x=Pr_Male)) + 
+  geom_histogram() +
+  coord_flip() +
+  labs(title = "Probability of Male of Legend Pokemons having gender")
+```
+
+
+##MegaEvolution percentage
+```{r}
+pokemon_m %>% group_by(Type_1, isLegendary) %>% tally() %>%  arrange(desc(n))
+pokemon_m %>% group_by(hasMegaEvolution, isLegendary) %>% tally() %>% mutate(perc = n/sum(n)) %>% arrange(perc)
+```
+
+
+##Type_1
+```{r}
+type_1 <- ggplot(pokemon_m, aes(x=Type_1)) 
+ type_1+geom_bar(aes(fill=isLegendary)) +
+   coord_flip()
+```
+
+##Type_2
+```{r}
+sum(is.na(pokemon_m$Type_2))
+pokemon_type2<- pokemon %>% filter(!is.na(Type_2))
+
+
+type_2 <- ggplot(pokemon_type2, aes(x=Type_2)) 
+ type_2+geom_bar(aes(fill=isLegendary)) +
+   coord_flip()
+```
+
+## more details about legendary group 
+
+```{r}
+
+legend %>% group_by(Type_1)%>% tally() %>% arrange(desc(n))  # Psychic has the highest number of legendary.
+
+#Psychi, Dragon, Fire, Steel
+```
+
+##Generation
+
+```{r}
+ggplot(data = pokemon_m) + 
+  geom_bar(mapping = aes(x = Type_1, fill = Generation)) +
+  labs(title = "All Pokemon's Type by Generation") +
+  coord_flip()
+
+
+ggplot(data = legend) + 
+  geom_bar(mapping = aes(x = Type_1, fill = Generation)) +
+  labs(title = "Legend Pokemon's Type by Generation") +
+  coord_flip()
+```
+
+
+## Total - Overall Strength 
+```{r}
+
+ggplot(data = legend, mapping = aes(x = Type_1, y = Total)) + 
+  geom_boxplot() +
+  coord_flip() +
+  labs( x = "Pokemon Type", y = "Overall strength",
+ title ="Legendary Pokemons' overall strength by Type1") 
+ggplot(data = pokemon_m, mapping = aes(x = Type_1, y = Total)) + 
+  geom_boxplot() +
+  coord_flip() +
+  labs( x = "Pokemon Type", y = "Overall strength",
+ title ="All Pokemons' overall strength by Type1") 
+
+```
+
+## height and Weight
+Heavier pokemons are more likely to be a legendary pokemon. 
+```{r}
+ggplot(pokemon_m, aes(x=Weight_kg, y=Height_m)) +
+  geom_point(aes(color = isLegendary))
+```
+
+
+## Top 3 legend pokemon by Power - Pie Chart 
+```{r}
+top10=legend %>% select(Name, Type_1, Total, HP, Attack, Defense, Sp_Atk, Sp_Def, Speed, Catch_Rate) %>% arrange(desc(Total)) %>% slice(1:10)
+
+# Simple Pie Chart
+t_top10 = data.frame(t(top10))
+t_top10 = t_top10[c(4:9),]
+
+power = c("HP", "Attack", "Defense", "Sp_Atk", "Sp_Def", "Speed")
+
+t_top10[, 11] <- power
+names(t_top10) <- c("Arceus", "Mewtwo","Lugia", "Ho-Oh", "Rayquaza", "Dialga", "Palkia", "Giratina", "Reshiram", "Zekrom", "power")
+
+
+pie_arceus <- ggplot(t_top10, aes(x = "", y=Arceus, fill = factor(power))) + 
+  geom_bar(width = 1, stat = "identity") +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="power", 
+       x=NULL, 
+       y=NULL, 
+       title="Arceus Power") +
+  coord_polar(theta = "y", start=0)
+
+pie_Mewtwo <- ggplot(t_top10, aes(x = "", y=Mewtwo, fill = factor(power))) + 
+  geom_bar(width = 1, stat = "identity") +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="power", 
+       x=NULL, 
+       y=NULL, 
+       title="Mewtwo Power") +
+  coord_polar(theta = "y", start=0)
+
+pie_Lugia <- ggplot(t_top10, aes(x = "", y=Lugia, fill = factor(power))) + 
+  geom_bar(width = 1, stat = "identity") +
+  theme(axis.line = element_blank(), 
+        plot.title = element_text(hjust=0.5)) + 
+  labs(fill="power", 
+       x=NULL, 
+       y=NULL, 
+       title="Lugia Power") +
+  coord_polar(theta = "y", start=0)
+
+
+pie_arceus
+pie_Mewtwo
+pie_Lugia
+```
+
+## Catch Rate
+```{r}
+pokemon_m %>% select(Catch_Rate) %>%  arrange(Catch_Rate)
+ggplot(pokemon_m, aes(x=Catch_Rate)) + geom_bar() + labs(title = "All Pokemons' catch rate") +
+ coord_flip()
+ggplot(legend, aes(x= Catch_Rate)) + geom_bar() + labs(title ="Legend Pokemons' catch rate - either 3 or 45") 
+
+pokemon_m %>% group_by(Body_Style) %>% tally() %>% arrange(desc(n)) %>% slice(1:10)
+# Number of all pokemons by Body Style 
+legend %>% group_by(Body_Style) %>% tally() %>% arrange(desc(n)) %>% slice(1:10)
+# Number of legend pokemons by Body Style 
+
+d= pokemon_m %>% select(Body_Style, isLegendary, Catch_Rate) %>% group_by(Body_Style, isLegendary) %>% mutate(avg_catchrate = mean(Catch_Rate))
+
+style_catchrate = d %>% group_by(Body_Style, avg_catchrate, isLegendary) %>% tally() %>% arrange(avg_catchrate)
+style_catchrate[1:10,] 
+# We can see that pokemons who have low average catch rate by body_style are more likley to be a legendary
+```
+
+
+
+## Body_Style
+```{r}
+ggplot(data = pokemon_m) + 
+  geom_bar(mapping = aes(x = Body_Style, fill = isLegendary)) +
+  labs(title = "Legend Pokemon's  Body Style") +
+  coord_flip()
+
+ggplot(data = pokemon_m, mapping = aes(x = Body_Style, y = Total)) + 
+  geom_boxplot() +
+  coord_flip() +
+  labs( x = "Pokemon Body Style", y = "Overall strength",
+ title ="All Pokemons' overall strength by Body Style") 
+
+ggplot(data = legend, mapping = aes(x = Body_Style, y = Total)) + 
+  geom_boxplot() +
+  coord_flip() +
+  labs( x = "Pokemon Body Style", y = "Overall strength",
+ title ="Legend Pokemons' overall strength by Body Style") 
+
+```
+
+#Variable Selection 
+```{r}
+#create training and validation data from given data
+install.packages('caTools')
+library(caTools)
+
+```
+
+isLegendary ~ Type_1 + Total + HP + Attack + Defense + Sp_Atk + Sp_Def + Speed + Generation + Color + hasGender + Egg_Group_1 + Height_m + Weight_kg + Catch_Rate + Body_Style
+
+
+
+#Model
+* Cross Validation - Variable Selection 
+```{r}
+cross <- lm(Catch_Rate ~isLegendary + Type_1 + Total + hasMegaEvolution + HP + Attack +Defense +Sp_Atk +Sp_Def + Speed + Generation + Color +hasGender+Egg_Group_1+hasMegaEvolution+Height_m + Weight_kg + Catch_Rate +Body_Style , data = pokemon_m )
+step(cross, direction="backward", trace=0)
+cross_min <- lm(Catch_Rate ~ isLegendary + Type_1 + Total + hasMegaEvolution + Generation + Defense + Color + Egg_Group_1 + Weight_kg, data= pokemon_m)
+step(cross_min, scope=list(upper = cross,
+lower= cross_min),
+direction="both", trace=0)
+
+
+```
+
+# Multiple linear regressino anova table 
+
+
+```{r}
+table(pokemon_m$Type_1)
+fit <- lm(Catch_Rate ~isLegendary + Type_1 + Total + hasMegaEvolution + HP + Attack +Defense +Sp_Atk +Sp_Def + Speed + Generation + Color +hasGender+Egg_Group_1+hasMegaEvolution+Height_m + Weight_kg +Body_Style, data = inputData)
+summary(fit)
+fit1 <- lm(Catch_Rate ~Total*Weight_kg*Egg_Group_1*Type_1*isLegendary, data = inputData)
+summary(fit1)
+
+fit$coefficients["Total"]
+test.pred.lin<- predict(fit1,testData)
+test.pred.lin
+RMSE.lin.reg <- sqrt(mean((test.pred.lin-testData$Catch_Rate)^2))
+RMSE.lin.reg
+MAE.lin.reg <- mean(abs(test.pred.lin-testData$Catch_Rate))
+MAE.lin.reg
+```
+
+* Regression Tree
+
+```{r}
+library(rpart)
+library(rpart.plot)
+set.seed(1)
+tree <- rpart(Catch_Rate ~Total+Weight_kg +Egg_Group_1, data = pokemon_m, method="anova")
+
+tree2<- rpart(Catch_Rate ~ isLegendary + Type_1 + Total + hasMegaEvolution + Generation + Defense + Color + Egg_Group_1 + Weight_kg, data= pokemon_m, method = "anova")
+
+tree3 <- rpart( Catch_Rate ~ Total + Egg_Group_1 + isLegendary +  Weight_kg + Generation + Type_1 + Defense + Color + hasMegaEvolution, method ="anova", 
+    data = pokemon_m)
+
+summary(tree)
+printcp(tree) # display the results
+printcp(tree) # visualize cross-validation results
+
+summary(tree2)
+plotcp(tree2)
+
+summary(tree3)
+plotcp(tree3)
+# plot tree
+plot(tree, uniform=TRUE, main="Regression Tree for catch rate ")
+text(tree, use.n=TRUE, all=TRUE, cex=.8)
+
+
+plot(tree2, uniform=TRUE, main="Regression Tree for catch rate ")
+text(tree2, use.n=TRUE, all=TRUE, cex=.8)
+
+plot(tree3, uniform=TRUE, main="Regression Tree for catch rate ")
+text(tree3,use.n=TRUE, all=TRUE,cex=.8)
+
+summary(tree3)
+
+
+# Pick tree3 by cross validation (forward method)
+```
+
+* Predict the catch rate, which variables are important to predict the catch rate. - regression tree. 
+
+* selecting variables by regression tree. 
+```{r}
+library(caret)
+```
+
+```{r}
+reg0=glm(Catch_Rate ~1,data=pokemon_m)
+summary(reg0)
+reg1=glm(Catch_Rate ~isLegendary + Type_1 + Total + hasMegaEvolution + HP + Attack +Defense +Sp_Atk +Sp_Def + Speed + Generation + Color +hasGender+Egg_Group_1+hasMegaEvolution+Height_m + Weight_kg + Catch_Rate +Body_Style , data = pokemon_m)
+summary(reg1)
+
+step(reg0,scope=formula(reg1),direction="forward",k=2) 
+```
+
+
+```{r}
+strongest_catch_rate <- pokemon_m %>% group_by(Catch_Rate) %>% filter(Catch_Rate==3)  
+strongest_catch_rate$Name
+```
+
+
+#Predict 
+
+```{r}
+library(rpart)
+set.seed(3)
+
+
+train <- sample (1:nrow(pokemon_m), .8*nrow(pokemon_m)) # training row indices
+
+inputData <- pokemon_m[train, ] # training data
+
+testData <- pokemon_m[-train, ] # test data
+
+
+summary(cross2)
+tree3 <- rpart(Catch_Rate ~Total+Egg_Group_1, data= inputData, method="anova")
+
+
+ test.pred.rtree <- predict(tree3,testData)
+ RMSE.rtree <- sqrt(mean((test.pred.rtree-testData$Catch_Rate)^2))
+ RMSE.rtree
+ MAE.rtree <- mean(abs(test.pred.rtree-testData$Catch_Rate))
+ MAE.rtree
+ 
+ 
+ min.xerror <- tree3$cptable[which.min(tree3$cptable[,"xerror"]),"CP"]
+ min.xerror
+ tree3.pruned <- prune(tree3,cp = min.xerror) 
+ library(rattle)
+ fancyRpartPlot(tree3.pruned)
+ test.pred.rtree.p <- predict(tree3.pruned,testData)
+ RMSE.rtree.pruned <- sqrt(mean((test.pred.rtree.p-testData$Catch_Rate)^2))
+ RMSE.rtree.pruned
+ MAE.rtree.pruned <- mean(abs(test.pred.rtree.p-testData$Catch_Rate))
+MAE.rtree.pruned
+
+best.guess <- mean(inputData$Catch_Rate)
+RMSE.baseline <- sqrt(mean((best.guess-testData$Catch_Rate)^2))
+RMSE.baseline
+
+MAE.baseline <- mean(abs(best.guess-testData$Catch_Rate))
+MAE.baseline
+# Pruned one and not pruned one are exactly same RMSE
+# In the final tree, only Total, Egg group 1 are considered relevant to predict the catch rate, and the generated rules are as follows (using natural language):
+
+#When total exceeds 509 and egg group is Bug, Undiscovered (7%), then predict Catch rate 9.1. 
+#When total is lower than 310 and egg group is Ditto, Dragon, Monster, Undiscoverd (1%), then we predict 68. 
+```
+
+
